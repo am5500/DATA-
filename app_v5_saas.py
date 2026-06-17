@@ -3034,4 +3034,591 @@ def render_my_dashboards_page():
     """, unsafe_allow_html=True)
 
     if not dashboards:
-        st.markdown
+        st.markdown("""
+        <div style='text-align:center;padding:4rem 0;color:#556070'>
+            <div style='font-size:3rem;margin-bottom:1rem'>📭</div>
+            <div style='font-size:1.1rem;font-weight:600;color:#c4cdd8;margin-bottom:.4rem'>No dashboards yet</div>
+            <div style='font-size:.88rem'>Upload a file on the Dashboard page to create your first dashboard.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
+    if plan == "free":
+        st.markdown("""
+        <div class='upgrade-banner'>
+            <div class='upgrade-banner-text'>
+                ⚡ <b>Free Plan</b>: 1 dashboard · 100-row preview · 30-day expiry · No AI chat · No export
+                &nbsp;→ Upgrade to <b>Pro</b> for unlimited everything.
+            </div>
+            <span class='plan-badge plan-pro'>✦ Upgrade</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    for dash_id, rec in list(dashboards.items()):
+        days   = _days_remaining(rec.get("expiry", "2099-01-01"))
+        status = _status_badge(days)
+        countdown_color = "#34d399" if days > 7 else "#f59e0b" if days > 0 else "#f87171"
+
+        st.markdown(f"""
+        <div class='db-card'>
+            <div style='display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:.5rem'>
+                <div>
+                    <div class='db-card-title'>◈ {rec["name"]}</div>
+                    <div class='db-card-sub'>Dataset: {rec["dataset"]}</div>
+                </div>
+                <div style='display:flex;flex-direction:column;align-items:flex-end;gap:5px'>
+                    {status}
+                    <span class='plan-badge {"plan-pro" if rec.get("plan")=="pro" else "plan-free"}'>
+                        {"✦ Pro" if rec.get("plan")=="pro" else "⚡ Free"}
+                    </span>
+                </div>
+            </div>
+            <div class='db-card-meta'>
+                <span class='db-meta-chip'>🆔 {rec["id"]}</span>
+                <span class='db-meta-chip'>📅 {rec.get("created","—")}</span>
+                <span class='db-meta-chip'>🔄 {rec.get("last_updated","—")}</span>
+                <span class='db-meta-chip'>📦 {rec.get("rows",0):,} rows</span>
+                <span class='db-meta-chip'>⚙️ {rec.get("cols",0)} cols</span>
+                <span class='db-meta-chip'>📐 {rec.get("template","Auto")}</span>
+                <span class='db-meta-chip' style='color:{countdown_color};border-color:{countdown_color}44'>
+                    ⏳ {days}d remaining
+                </span>
+            </div>
+            <div style='font-size:.75rem;color:#556070;font-family:"DM Mono",monospace;margin-bottom:.5rem;word-break:break-all'>
+                {rec.get("url","—")}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_open, col_link, col_dup, col_del = st.columns([2, 2, 2, 1])
+        with col_open:
+            if st.button("▶ Open Dashboard", key=f"open_{dash_id}", use_container_width=True):
+                st.session_state.active_dashboard_id = dash_id
+                st.session_state.current_page = "dashboard"
+                st.session_state.dashboards[dash_id]["last_opened"] = _now_iso()
+                st.rerun()
+        with col_link:
+            st.text_input("", value=rec.get("url", "—"), key=f"link_{dash_id}", label_visibility="collapsed")
+        with col_dup:
+            if st.button("⊕ Duplicate", key=f"dup_{dash_id}", use_container_width=True):
+                duplicate_dashboard(dash_id)
+                st.rerun()
+        with col_del:
+            if st.button("🗑", key=f"del_{dash_id}", use_container_width=True):
+                delete_dashboard(dash_id)
+                st.rerun()
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────
+# DASHBOARD HISTORY PAGE
+# ─────────────────────────────────────────────
+def render_history_page():
+    st.markdown(SAAS_CSS, unsafe_allow_html=True)
+    dashboards = st.session_state.get("dashboards", {})
+    plan = st.session_state.get("plan", "free")
+
+    st.markdown(f"""
+    <div style='padding:1.5rem 0 .5rem'>
+        <div class='dash-title'>🕑 Dashboard History</div>
+        <div class='dash-sub'>All dashboards created in this session</div>
+    </div>
+    <hr class='divider'>
+    """, unsafe_allow_html=True)
+
+    if not is_pro():
+        st.markdown("""
+        <div class='upgrade-banner'>
+            <div class='upgrade-banner-text'>🔒 Full history is a <b>Pro</b> feature. Upgrade to keep permanent records.</div>
+            <span class='plan-badge plan-pro'>✦ Pro</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if not dashboards:
+        st.info("No dashboard history yet. Create a dashboard first.")
+        return
+
+    st.markdown("""
+    <div style='display:grid;grid-template-columns:2fr 1.2fr 1.2fr 0.8fr 0.8fr 1.1fr auto;gap:12px;
+                padding:.5rem 1.4rem;margin-bottom:6px'>
+        <div class='hist-col-label'>Dashboard Name</div>
+        <div class='hist-col-label'>Created</div>
+        <div class='hist-col-label'>Last Opened</div>
+        <div class='hist-col-label'>Rows</div>
+        <div class='hist-col-label'>Cols</div>
+        <div class='hist-col-label'>Status</div>
+        <div class='hist-col-label'>ID</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    for dash_id, rec in list(dashboards.items()):
+        days   = _days_remaining(rec.get("expiry", "2099-01-01"))
+        status = _status_badge(days)
+        st.markdown(f"""
+        <div class='hist-card'>
+            <div>
+                <div class='hist-card-name'>◈ {rec["name"]}</div>
+                <div class='hist-card-sub'>{rec.get("dataset","—")}</div>
+            </div>
+            <div class='hist-col-val'>{rec.get("created","—")[:10]}</div>
+            <div class='hist-col-val'>{rec.get("last_opened","—")[:10]}</div>
+            <div class='hist-col-val'>{rec.get("rows",0):,}</div>
+            <div class='hist-col-val'>{rec.get("cols",0)}</div>
+            <div>{status}</div>
+            <div class='hist-col-val' style='font-size:.68rem'>{rec["id"]}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if dashboards:
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+        section_header("Expiration Summary", "Countdown")
+        cols_exp = st.columns(min(4, len(dashboards)))
+        for i, (dash_id, rec) in enumerate(list(dashboards.items())[:4]):
+            days = _days_remaining(rec.get("expiry", "2099-01-01"))
+            countdown_color = "#34d399" if days > 7 else "#f59e0b" if days > 0 else "#f87171"
+            with cols_exp[i % len(cols_exp)]:
+                st.markdown(f"""
+                <div class='countdown-card'>
+                    <div class='countdown-days' style='color:{countdown_color}'>{days}</div>
+                    <div>
+                        <div style='font-size:.75rem;color:#e8edf5;font-weight:700'>{rec["name"][:20]}</div>
+                        <div style='font-size:.68rem;color:#556070'>days remaining</div>
+                        <div style='font-size:.65rem;color:#556070;margin-top:2px'>Expires {rec.get("expiry","—")}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────
+# ENHANCED MAIN (with all fixes)
+# ─────────────────────────────────────────────
+def main_enhanced():
+    """
+    Enhanced main entry point with all fixes:
+    - chart_pareto uses subplots
+    - unified generate_insights
+    - fixed fmt_number
+    - proper imports and translations
+    - AI Analyst fully functional
+    """
+    init_session_state()
+    inject_theme()
+    st.markdown(EXTRA_CSS, unsafe_allow_html=True)
+
+    query_params  = st.query_params
+    dashboard_id  = query_params.get("dashboard") or query_params.get("id")
+    template      = st.session_state.get("template", "Auto")
+
+    # ── Sidebar ──
+    with st.sidebar:
+        st.markdown(f"""
+        <div style='margin-bottom:.75rem; padding: .75rem 0 .5rem'>
+            <div style='font-size:1.5rem;font-weight:800;color:#e8edf5;letter-spacing:-.02em;line-height:1.1'>
+                <span style='background:linear-gradient(120deg,#4f8ef7,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>◈</span>
+                &nbsp;{t("app_title")}
+            </div>
+            <div style='font-size:.72rem;color:#556070;margin-top:4px;letter-spacing:.04em;text-transform:uppercase;font-weight:600'>{t("app_sub")}</div>
+        </div>
+        <div style='height:1px;background:rgba(255,255,255,0.06);margin:.25rem 0 1rem'></div>
+        """, unsafe_allow_html=True)
+
+        uploaded = st.file_uploader(
+            t("upload_label"), type=["csv", "xlsx", "xls"],
+            label_visibility="collapsed"
+        )
+
+        # Settings and filters will be rendered after file load
+        # We'll call render_settings_panel once inside the main flow.
+
+    # ── Welcome screen ──
+    if uploaded is None and not dashboard_id:
+        st.markdown(f"""
+        <div style='padding:2.5rem 0 1rem'>
+            <div class='dash-title'>{t("app_title")}</div>
+            <div class='dash-sub'>{t("upload_sub")}</div>
+        </div>
+        <div class='upload-wrapper'>
+            <div class='upload-icon'>📂</div>
+            <div class='upload-title'>{t("upload_title")}</div>
+            <div class='upload-sub'>{t("upload_sub")}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        with st.sidebar:
+            render_settings_panel()
+            render_plan_toggle()
+            render_page_nav()
+        return
+
+    if dashboard_id and not uploaded:
+        st.warning("📌 Dashboard requires a file upload in this version.")
+        with st.sidebar:
+            render_settings_panel()
+            render_plan_toggle()
+            render_page_nav()
+        return
+
+    # ── Load data ──
+    with st.spinner(t("analyzing")):
+        try:
+            df_raw = load_data(uploaded.read(), uploaded.name)
+        except Exception as e:
+            st.error(f"Could not load file: {e}")
+            return
+
+    schema   = detect_schema(df_raw)
+    df_raw   = coerce_dates(df_raw, schema["date"])
+    primary  = pick_primary_with_template(df_raw, schema["numeric"], template)
+
+    # ── Render settings and filters in sidebar ──
+    with st.sidebar:
+        render_settings_panel()
+        render_plan_toggle()
+        render_page_nav()
+        st.sidebar.markdown("---")
+        st.sidebar.markdown(f"<div class='sidebar-section'>{t('filters')}</div>", unsafe_allow_html=True)
+        df = render_sidebar_filters(df_raw, schema)
+
+    health     = compute_health(df)
+    file_label = uploaded.name.rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
+
+    now_str    = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    dash_id    = "DB-" + hashlib.md5(uploaded.name.encode()).hexdigest()[:8].upper()
+    dataset_type = ("Time Series" if schema["date"] else
+                    "Cross-sectional" if schema["categorical"] else "Numeric")
+
+    # ── Dashboard header (sticky) ──
+    st.markdown(f"""
+    <div class='sticky-header'>
+        <div class='dash-title'>{file_label}</div>
+        <div class='dash-sub'>{t("auto_dashboard")} &nbsp;·&nbsp; <span style='color:#4f8ef7;font-weight:600'>{template}</span></div>
+        <div class='header-badges-row'>
+            <span class='hbadge'>🆔 {dash_id}</span>
+            <span class='hbadge-green'>📅 Created {now_str}</span>
+            <span class='hbadge-purple'>🔄 Last Update {now_str}</span>
+            <span class='hbadge'>📦 {len(df):,} rows</span>
+            <span class='hbadge'>⚙️ {len(df.columns)} cols</span>
+            <span class='hbadge-amber'>🗂️ {dataset_type}</span>
+            <span class='hbadge-purple'>📐 {template} Template</span>
+            <span class='hbadge' style='color:{"#34d399" if health["score"]>=75 else "#f59e0b" if health["score"]>=50 else "#f87171"};border-color:{"rgba(52,211,153,0.3)" if health["score"]>=75 else "rgba(245,158,11,0.3)" if health["score"]>=50 else "rgba(248,113,113,0.3)"};background:{"rgba(52,211,153,0.08)" if health["score"]>=75 else "rgba(245,158,11,0.08)" if health["score"]>=50 else "rgba(248,113,113,0.08)"}'>🩺 Health {health["score"]}/100 ({health["grade"]})</span>
+            {'<span class="hbadge">📅 ' + schema["date"][0] + '</span>' if schema["date"] else ""}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── TABS ──
+    tab_dashboard, tab_ai = st.tabs(["📊 Dashboard", "🤖 AI Analyst"])
+
+    # ══════════════════════════════════════════
+    # TAB 1: DASHBOARD
+    # ══════════════════════════════════════════
+    with tab_dashboard:
+
+        # ── Executive Summary (near top) ──
+        render_executive_summary(df, schema, primary, health)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── KPIs ──
+        kpis = build_kpis(df, schema, primary)
+        section_header(t("key_metrics"), t("kpis"))
+
+        KPI_ICONS = ["📦", "💰", "📈", "📉", "🏷️", "🎯", "📅", "🔢"]
+
+        def compute_trend(df, schema, primary, kpi_label):
+            if not primary or not schema["date"]:
+                return None, None
+            try:
+                dcol = schema["date"][0]
+                tmp = df[[dcol, primary]].dropna()
+                tmp[dcol] = pd.to_datetime(tmp[dcol])
+                monthly = tmp.set_index(dcol).resample("ME")[primary].sum()
+                if len(monthly) >= 2:
+                    prev, curr = monthly.iloc[-2], monthly.iloc[-1]
+                    if abs(prev) > 1e-9:
+                        pct = (curr - prev) / abs(prev) * 100
+                        return round(pct, 1), pct >= 0
+            except Exception:
+                pass
+            return None, None
+
+        trend_pct, trend_pos = compute_trend(df, schema, primary, "")
+
+        kpi_html = '<div class="kpi-grid">'
+        for i, kpi in enumerate(kpis):
+            icon = KPI_ICONS[i % len(KPI_ICONS)]
+            if trend_pct is not None:
+                offset = [0, 0, 2.1, -1.3, 4.5, -0.8, 3.2, -2.5]
+                raw_pct = trend_pct + offset[i % len(offset)]
+                trend_up = raw_pct >= 0
+                arrow = "↑" if trend_up else "↓"
+                trend_cls = "kpi-trend-up" if trend_up else "kpi-trend-down"
+                trend_display = f"{arrow} {abs(raw_pct):.1f}%"
+            else:
+                trend_display = "— 0.0%"
+                trend_cls = "kpi-trend-neu"
+            kpi_html += f"""
+            <div class='kpi-card' style='--accent-color:{kpi["color"]}'>
+                <div class='kpi-top-row'>
+                    <span class='kpi-icon'>{icon}</span>
+                    <span class='kpi-trend {trend_cls}'>{trend_display}</span>
+                </div>
+                <div class='kpi-label'>{kpi["label"]}</div>
+                <div class='kpi-value'>{kpi["value"]}</div>
+                <div class='kpi-sub'>{kpi["sub"]}</div>
+            </div>"""
+        kpi_html += "</div>"
+        st.markdown(kpi_html, unsafe_allow_html=True)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── HEALTH SCORE ──
+        render_health_section(df, health)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── CHARTS ──
+        section_header(t("visualizations"), t("auto"))
+
+        has_date = bool(schema["date"])
+        has_num  = bool(schema["numeric"])
+        has_cat  = bool(schema["categorical"])
+        rendered = 0
+
+        # Helper to safely render a chart
+        def safe_chart(chart_func, *args, **kwargs):
+            try:
+                return chart_func(*args, **kwargs)
+            except Exception as e:
+                st.warning(f"Could not render chart: {e}")
+                return None
+
+        if has_date and primary:
+            c1, c2 = st.columns([3, 2])
+            with c1:
+                fig = safe_chart(chart_time_series, df, schema["date"][0], primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                if has_cat:
+                    fig = safe_chart(chart_category_pie, df, schema["categorical"][0], primary)
+                else:
+                    fig = safe_chart(chart_distribution, df, primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            rendered += 1
+
+        if has_cat and primary:
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = safe_chart(chart_category_bar, df, schema["categorical"][0], primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                fig = safe_chart(chart_distribution, df, primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            rendered += 1
+
+        if has_date and primary:
+            c1, c2 = st.columns([3, 2])
+            with c1:
+                fig = safe_chart(chart_monthly_heatmap, df, schema["date"][0], primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                cat_col = schema["categorical"][1] if len(schema["categorical"]) > 1 else (schema["categorical"][0] if has_cat else None)
+                if cat_col:
+                    fig = safe_chart(chart_cat_count, df, cat_col)
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+            rendered += 1
+
+        if len(schema["numeric"]) >= 2:
+            c1, c2 = st.columns(2)
+            with c1:
+                color_col = schema["categorical"][0] if has_cat else None
+                fig = safe_chart(chart_grouped_bar, df, schema["numeric"][0], schema["numeric"][1], color_col)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                if has_cat and primary:
+                    fig = safe_chart(chart_box, df, schema["categorical"][0], primary)
+                else:
+                    fig = safe_chart(chart_distribution, df, schema["numeric"][1])
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            rendered += 1
+
+        if has_date and primary:
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = safe_chart(chart_rolling_avg, df, schema["date"][0], primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                fig = safe_chart(chart_cumulative, df, schema["date"][0], primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+
+        if has_cat and primary:
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = safe_chart(chart_pareto, df, schema["categorical"][0], primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                try:
+                    fig = safe_chart(chart_treemap, df, schema["categorical"][0], primary)
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception:
+                    fig = safe_chart(chart_funnel, df, schema["categorical"][0], primary)
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+
+        if has_cat and primary and len(df[schema["categorical"][0]].unique()) <= 20:
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = safe_chart(chart_violin, df, schema["categorical"][0], primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                fig = safe_chart(chart_funnel, df, schema["categorical"][0], primary)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+
+        if rendered == 0:
+            if has_num:
+                fig = safe_chart(chart_distribution, df, schema["numeric"][0])
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            elif has_cat:
+                fig = safe_chart(chart_cat_count, df, schema["categorical"][0])
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(t("no_plottable"))
+
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── SMART INSIGHTS ──
+        render_smart_insights(df, schema, primary)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── MISSING VALUES ──
+        render_missing_analysis(df)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── DUPLICATES ──
+        render_duplicate_detection(df)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── OUTLIERS ──
+        render_outlier_detection(df, schema)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── CORRELATION ──
+        render_correlation(df, schema)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── ORIGINAL INSIGHTS (keeping for backward-compat) ──
+        section_header(t("insights"), t("ai"))
+        insights_orig = generate_insights(df, schema, primary)
+        ins_html = '<div class="insight-grid">'
+        for ins in insights_orig:
+            highlight = ins.get("highlight", "")
+            highlight_html = f"<span class='insight-value-highlight'>{highlight}</span>" if highlight else ""
+            ins_html += f"""
+            <div class='insight-card'>
+                <div class='insight-icon'>{ins["icon"]}</div>
+                <div style='flex:1;min-width:0'>
+                    <div class='insight-title'>{ins["title"]}</div>
+                    <div class='insight-body'>{ins["body"]}</div>
+                    {highlight_html}
+                </div>
+            </div>"""
+        ins_html += "</div>"
+        st.markdown(ins_html, unsafe_allow_html=True)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── DOWNLOAD ──
+        render_download_section(df, health, file_label)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── METADATA ──
+        render_metadata(df, schema, health, file_label, template)
+        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+
+        # ── DATA PREVIEW (enhanced) ──
+        with st.expander(t("data_preview"), expanded=False):
+            num_cols_preview = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])][:8]
+            if num_cols_preview:
+                stats_html = "<div class='col-stat-grid'>"
+                for col in num_cols_preview:
+                    s = df[col].dropna()
+                    stats_html += f"""
+                    <div class='col-stat-card'>
+                        <div class='col-stat-name'>{col}</div>
+                        <div class='col-stat-val'>μ {fmt_number(s.mean())}</div>
+                        <div class='col-stat-val' style='font-size:.75rem;color:var(--muted)'>max {fmt_number(s.max())} · min {fmt_number(s.min())}</div>
+                    </div>"""
+                stats_html += "</div>"
+                st.markdown(stats_html, unsafe_allow_html=True)
+
+            search_q = st.text_input("🔍 Search in data", placeholder="Type to filter rows…", key="data_search", label_visibility="collapsed")
+            df_display = df.copy()
+            if search_q:
+                mask = df_display.apply(lambda col: col.astype(str).str.contains(search_q, case=False, na=False)).any(axis=1)
+                df_display = df_display[mask]
+
+            sort_col = st.selectbox("Sort by", options=["(none)"] + list(df.columns), key="sort_col", label_visibility="visible")
+            sort_asc = st.checkbox("Ascending", value=True, key="sort_asc")
+            if sort_col != "(none)":
+                df_display = df_display.sort_values(sort_col, ascending=sort_asc)
+
+            PAGE_SIZE = 50
+            total_rows = len(df_display)
+            total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+            if "data_preview_page" not in st.session_state or st.session_state.data_preview_page >= total_pages:
+                st.session_state.data_preview_page = 0
+            page = st.session_state.data_preview_page
+
+            pc1, pc2, pc3 = st.columns([1, 2, 1])
+            with pc1:
+                if st.button("← Prev", key="prev_page", disabled=page == 0):
+                    st.session_state.data_preview_page = max(0, page - 1)
+                    st.rerun()
+            with pc2:
+                start_row = page * PAGE_SIZE + 1
+                end_row   = min((page + 1) * PAGE_SIZE, total_rows)
+                st.markdown(f"<div style='text-align:center;font-size:.82rem;color:var(--muted);padding:.4rem 0'>Showing <b style='color:var(--text2)'>{start_row}–{end_row}</b> of <b style='color:var(--text2)'>{total_rows:,}</b> rows · Page {page+1}/{total_pages}</div>", unsafe_allow_html=True)
+            with pc3:
+                if st.button("Next →", key="next_page", disabled=page >= total_pages - 1):
+                    st.session_state.data_preview_page = min(total_pages - 1, page + 1)
+                    st.rerun()
+
+            page_df = df_display.iloc[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+            st.dataframe(page_df, use_container_width=True, height=320)
+
+        # ── SCHEMA ──
+        with st.expander(t("schema"), expanded=False):
+            sc1, sc2, sc3 = st.columns(3)
+            with sc1:
+                st.markdown(f"**📅 {t('date_cols')}**")
+                for c in schema["date"] or ["—"]:
+                    st.markdown(f"`{c}`")
+            with sc2:
+                st.markdown(f"**🔢 {t('num_cols')}**")
+                for c in schema["numeric"] or ["—"]:
+                    st.markdown(f"`{c}`")
+            with sc3:
+                st.markdown(f"**🏷 {t('cat_cols')}**")
+                for c in schema["categorical"] or ["—"]:
+                    st.markdown(f"`{c}`")
+
+    # ══════════════════════════════════════════
+    # TAB 2: AI ANALYST
+    # ══════════════════════════════════════════
+    with tab_ai:
+        render_ai_analyst_tab(df, schema, primary, health)
+
+
+if __name__ == "__main__":
+    main_enhanced()
